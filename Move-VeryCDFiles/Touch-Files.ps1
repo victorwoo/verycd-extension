@@ -1,0 +1,1 @@
+dir \\192.168.1.100\e$\eMuleXtreme\Incoming | % {touch-file $_.Name}

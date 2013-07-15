@@ -1,0 +1,41 @@
+{
+    "background": {
+        "scripts": [
+            "background.js"
+        ]
+    },
+    "content_scripts": [
+        {
+            "css": [
+                "jquery-ui.min.css"
+            ],
+            "js": [
+                "jquery-2.0.3.min.js",
+                "jquery-ui.min.js",
+                "verycd-ext.js"
+            ],
+            "matches": [
+                "http://www.verycd.com/topics/*"
+            ]
+        }
+    ],
+    "description": "为www.verycd.com的每个下载列表尾部添加“下载清单”按钮。",
+    "icons": {
+        "128": "VeryCD_Extension.png",
+        "48": "VeryCD_Extension.png"
+    },
+    "manifest_version": 2,
+    "name": "VeryCD Extension",
+    "page_action": {
+        "default_icon": "VeryCD_Extension.png",
+        "default_title": "已在下载列表尾部添加“下载清单”按钮。"
+    },
+    "permissions": [
+        "tabs",
+        "http://www.verycd.com/"
+    ],
+    "version": "1.6",
+    "web_accessible_resources": [
+        "jquery-2.0.3.min.map"
+    ]
+}

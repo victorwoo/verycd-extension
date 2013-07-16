@@ -30,13 +30,13 @@ $("div.emulemain table").find("tr:last td:first :button:last").click(function(ev
 	var table = $(event.target).parents("table")
 
 	var ed2kContent = {
-		folders: [],
+		scriptVersion: 1,
+		date: new Date(),
+		title: $("#topicstitle").text(),
+		url: window.location.href,
 		files: [],
-		title: ""
+		folders: []
 	};
-
-	var title = $("#topicstitle").text();
-	ed2kContent.title = title;
 
 	var currentFolder = ed2kContent;
 	table.find("tr").each(function() {
@@ -62,13 +62,17 @@ $("div.emulemain table").find("tr:last td:first :button:last").click(function(ev
 		} else if ($(this).find("td.post,td.post2,td.new,td.new2").length > 0 && $(this).find("td.post,td.post2,td.new,td.new2").find("input")[0].checked) {
 			// 文件。
 			var fileName = $(this).find("a[ed2k]").text();
-			currentFolder.files.push(fileName);
+			var ed2k = $(this).find("a[ed2k]").attr("ed2k");
+			currentFolder.files.push({
+				name: fileName,
+				ed2k: ed2k
+			});
 		}
 	});
 
 	var jsonString = JSON.stringify(ed2kContent, null, "\t");
 	console.log(jsonString);
-	downloadFile(fixFileName(title) + ".manifest.json", jsonString);
+	downloadFile(fixFileName(ed2kContent.title) + ".manifest.json", jsonString);
 	/*
 	$(document.body).append('<div id="json_message" style="display: none; margin: 0; padding: 0;">' +
 		'<textarea id="json_message_text" style="text-align: left; width: 99%; height: 100%; overflow: hidden; border: 0px;" cols="100%" rows="100%"><span class="ui-icon ui-icon-alert" style="float: left; margin: 0 7px 20px 0;">' +

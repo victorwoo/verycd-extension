@@ -90,12 +90,104 @@ function Get-ValidFileSystemName
 	}
 }
 
-#dir \\htpc\f$\sharevideo\Android深入浅出 | % {Touch-File $_.Name}
+function Print-UrlToPDF {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Url,
 
-#'CON.NUL', 'CON', 'nul' | Get-ValidFileSystemName
-#return
+        [Parameter(Mandatory=$true)]
+        [string]$Path
+    )
 
-function Move-Files{
+    process{
+        $OutputFolder = [System.IO.Path]::GetDirectoryName($Path)
+        $FileName = [System.IO.Path]::GetFileName($Path)
+
+        ############################################################### 
+        #         DO NOT WRITE ANYTHING BELOW THIS LINE               # 
+        ############################################################### 
+        $ErrorActionPreference="Stop" 
+        $WarningPreference="Stop" 
+        $PDFINFOPATH="HKCU:\Software\PDFCreator\Program" 
+        $AUTOSAVEFNAMEPROPERTY="AutoSaveFilename" 
+        $AUTOSAVEDIRPROPERTY="AutoSaveDirectory" 
+        $USEAUTOSAVEPROPERTY="UseAutoSave" 
+        ################################################################ 
+        try 
+        { 
+            get-itemproperty -path $PDFINFOPATH -name $AUTOSAVEDIRPROPERTY |out-null    
+            set-itemproperty -path $PDFINFOPATH -name $AUTOSAVEDIRPROPERTY -value $OutputFolder |out-null     
+        } 
+        catch 
+        { 
+            new-itemproperty -path $PDFINFOPATH -name $AUTOSAVEDIRPROPERTY -value $OutputFolder |out-null    
+     
+        } 
+        try 
+        { 
+            get-itemproperty -path $PDFINFOPATH -name $USEAUTOSAVEPROPERTY |out-null    
+            set-itemproperty -path $PDFINFOPATH -name $USEAUTOSAVEPROPERTY -value "1" |out-null 
+        } 
+        catch 
+        { 
+            new-itemproperty -path $PDFINFOPATH -name $USEAUTOSAVEPROPERTY -value "1" |out-null    
+     
+        } 
+        finally 
+        { 
+          try 
+          { 
+            # Create the IE com object
+            try
+            {
+                $ie = new-object -comObject InternetExplorer.Application
+            }
+            catch
+            {
+                $ErrorMessage = $_.Exception.Message
+                $FailedItem = $_.Exception.ItemName
+   
+                exit 1
+            }
+
+            # Navigate to the web page
+            $ie.navigate($Url)
+            # Wait for the page to finish loading
+            do {sleep 1} until (-not ($ie.Busy))
+            #$ie.visible = $true #Uncomment this for debugging        
+
+            try 
+            { 
+                get-itemproperty -path $PDFINFOPATH -name $AUTOSAVEFNAMEPROPERTY |out-null 
+                set-itemproperty -path $PDFINFOPATH -name $AUTOSAVEFNAMEPROPERTY -value "$FileName.pdf" |out-null  
+            } 
+            catch 
+            { 
+                new-itemproperty -path $PDFINFOPATH -name $AUTOSAVEFNAMEPROPERTY -value "$FileName.pdf" |out-null 
+        
+            }      
+            start-sleep -seconds 5  
+            $ie.execWB(6,2) 
+            start-sleep -seconds 5     
+            $ie.quit()     
+          } 
+          catch {} 
+          finally 
+          {   
+            try 
+            { 
+                set-itemproperty -path $PDFINFOPATH -name $AUTOSAVEFNAMEPROPERTY -value "" |out-null  
+                set-itemproperty -path $PDFINFOPATH -name $AUTOSAVEDIRPROPERTY -value "" |out-null  
+                set-itemproperty -path $PDFINFOPATH -name $USEAUTOSAVEPROPERTY -value "0" |out-null  
+            } 
+            catch{}     
+          }   
+        }
+    }
+}
+
+function Move-Ed2kFile{
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$true)]
@@ -114,26 +206,46 @@ function Move-Files{
     }
 }
 
+$ScriptVersion = 1
 dir *.manifest.json | % {
     echo "Processing $_"
 	$json = (gc -LiteralPath $_ -Encoding 'UTF8') -join "`n" | ConvertFrom-Json
+
+    if ($json.scriptVersion -ne 1) {
+        Write-Warning "版本不匹配，清单 = $($json.scriptVersion)，脚本 = $($ScriptVersion)"
+        return
+    }
+
     $missingFiles = New-Object System.Collections.ArrayList
 
 	$rootFolder = $json.title | Get-ValidFileSystemName
 	md $rootFolder -ErrorAction SilentlyContinue | Out-Null
 
-    $json.files | Get-ValidFileSystemName | Move-Files -RootFolder $rootFolder
+    $dateToFileName = $json.date | Get-ValidFileSystemName
+
+    #创建.url
+    $urlPath = Join-Path (Join-Path (pwd) $rootFolder) ($dateToFileName + '.url')
+    $WshShell = New-Object -com "WScript.Shell"
+    $Link = $WshShell.CreateShortcut($urlPath)
+    $Link.TargetPath = $json.url
+    $Link.Save()
+
+    #创建.pdf
+    #$pdfPath = Join-Path ( Join-Path (pwd) $rootFolder) ($dateToFileName + '.pdf')
+    #Print-UrlToPDF $json.url $pdfPath
+
+    $json.files | select -ExpandProperty name | Get-ValidFileSystemName | Move-Ed2kFile -RootFolder $rootFolder
 
 	$json.folders | % {
 	    $folderName = $_.name | Get-ValidFileSystemName
         $folderPath = Join-Path $rootFolder $folderName
 	    md $folderPath -ErrorAction SilentlyContinue | Out-Null
 
-	    $_.files | Get-ValidFileSystemName | Move-Files -RootFolder $folderPath
+	    $_.files | select -ExpandProperty name | Get-ValidFileSystemName | Move-Ed2kFile -RootFolder $folderPath
 	}
 
     if ($missingFiles.Count -eq 0) {
-        mv $_ "$_.done"
+        mv $_ (Join-Path $rootFolder "$dateToFileName.json")
     } else {
         Write-Warning ("Missing:`n" + ($missingFiles | Out-String))
     }

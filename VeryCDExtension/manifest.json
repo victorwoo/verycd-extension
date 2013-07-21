@@ -34,7 +34,7 @@
         "tabs",
         "http://www.verycd.com/"
     ],
-    "version": "1.6",
+    "version": "1.3",
     "web_accessible_resources": [
         "jquery-2.0.3.min.map"
     ]

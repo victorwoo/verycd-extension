@@ -187,6 +187,20 @@ function Print-UrlToPDF {
     }
 }
 
+function Get-LengthFromEd2kLink {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+        [string]$Ed2kLink
+    )
+
+    process {
+        $regex = [regex] '(?x)ed2k://\|file\|(?<file_name>[^|]+)\|(?<file_size>\d+)\|(?<file_hash>[0-9a-fA-F]+)\|(?:p=(?<hash_set>[0-9a-fA-F:]+)\||h=(?<root_hash>[0-9a-zA-Z]+)\||s=(?<http_source>[^|]+)\||/\|sources,(?<sources_host>[0-9a-zA-Z.]+):(?<sources_port>\d+)\|)*/'
+        $fileSize = [System.Int64]$regex.Match($Ed2kLink).Groups['file_size'].Value;
+        return $fileSize
+    }
+}
+
 function Move-Ed2kFile{
     [CmdletBinding()]
     param(
@@ -194,19 +208,62 @@ function Move-Ed2kFile{
         [string]$RootFolder,
 
         [Parameter(Mandatory=$true, ValueFromPipeline = $true)]
-        [string]$FileName
+        [string]$FileName,
+
+        [Parameter(Mandatory=$true)]
+        [string]$Ed2kUrl
     )
 
     process {
         $newPath = Join-Path $RootFolder $FileName
-        if (-not (Test-Path $FileName) -and -not (Test-Path $newPath)) {
-            $missingFiles.Add($FileName) | Out-Null
+        if (Test-Path -LiteralPath $newPath) {
+            return
         }
-        mv -LiteralPath $FileName $newPath -Force -ErrorAction SilentlyContinue
+
+        $mainFileName = [System.IO.Path]::GetFileNameWithoutExtension($FileName)
+        $extension = [System.IO.Path]::GetExtension($FileName)
+        $possibleSources = @()
+        if (Test-Path -LiteralPath $FileName) {
+            $possibleSources += $FileName
+        }
+
+        dir "*$extension" | ? {
+            $actualMainFileName = $_.BaseName
+            if (-not $actualMainFileName.StartsWith($mainFileName)) {
+                return $false
+            }
+
+            $restPart = $actualMainFileName.SubString($mainFileName.Length)
+            return $restPart -cmatch '^ \(\d+\)$'
+        } | % {
+            $possibleSources += $_.Name
+        }
+
+        $possibleSources | % `
+            -begin{
+                $matched = $false
+                $fileSizeFromEd2kUrl = Get-LengthFromEd2kLink $Ed2kUrl
+            } `
+            -process {
+                $fileSize = (dir -LiteralPath $_).Length
+                if ($fileSize -eq 0 -or $fileSize -eq $fileSizeFromEd2kUrl) {
+                    $matched = $true
+                    mv -LiteralPath $_ $newPath -Force -ErrorAction SilentlyContinue
+                }
+            } `
+            -end {
+                if (-not $matched) {
+                    $missingFiles.Add($FileName) | Out-Null
+                    $global:missingEd2kUrls = $global:missingEd2kUrls + $Ed2kUrl
+                }
+            } `
+        
     }
 }
 
+cd D:\Downloads
 $ScriptVersion = 1
+$global:missingEd2kUrls = @()
 dir *.manifest.json | % {
     echo "Processing $_"
 	$json = (gc -LiteralPath $_ -Encoding 'UTF8') -join "`n" | ConvertFrom-Json
@@ -224,7 +281,7 @@ dir *.manifest.json | % {
     $dateToFileName = $json.date | Get-ValidFileSystemName
 
     #创建.url
-    $urlPath = Join-Path (Join-Path (pwd) $rootFolder) ($dateToFileName + '.url')
+    $urlPath = Join-Path (Join-Path (pwd) $rootFolder) 'resource.url'
     $WshShell = New-Object -com "WScript.Shell"
     $Link = $WshShell.CreateShortcut($urlPath)
     $Link.TargetPath = $json.url
@@ -234,19 +291,31 @@ dir *.manifest.json | % {
     #$pdfPath = Join-Path ( Join-Path (pwd) $rootFolder) ($dateToFileName + '.pdf')
     #Print-UrlToPDF $json.url $pdfPath
 
-    $json.files | select -ExpandProperty name | Get-ValidFileSystemName | Move-Ed2kFile -RootFolder $rootFolder
+    $folderPath = $rootFolder
+    $json.files | % {
+        $_.name | Get-ValidFileSystemName | Move-Ed2kFile -RootFolder $folderPath -Ed2kUrl $_.ed2k
+    }
 
 	$json.folders | % {
 	    $folderName = $_.name | Get-ValidFileSystemName
         $folderPath = Join-Path $rootFolder $folderName
 	    md $folderPath -ErrorAction SilentlyContinue | Out-Null
 
-	    $_.files | select -ExpandProperty name | Get-ValidFileSystemName | Move-Ed2kFile -RootFolder $folderPath
+	    $_.files | % {
+            $_.name | Get-ValidFileSystemName | Move-Ed2kFile -RootFolder $folderPath -Ed2kUrl $_.ed2k
+        }
 	}
 
     if ($missingFiles.Count -eq 0) {
-        mv $_ (Join-Path $rootFolder "$dateToFileName.json")
+        mv -LiteralPath $_ (Join-Path $rootFolder "manifest.json") -Force
     } else {
-        Write-Warning ("Missing:`n" + ($missingFiles | Out-String))
+        Write-Warning ($json.url + " Missing:`n" + ($missingFiles | Out-String))
     }
+}
+
+if ($global:missingEd2kUrls.Length -gt 0) {
+    $global:missingEd2kUrls | sc 'missing.txt'
+    notepad missing.txt
+} else {
+    del missing.txt -ErrorAction SilentlyContinue
 }

@@ -196,7 +196,7 @@ function Get-LengthFromEd2kLink {
 
     process {
         $regex = [regex] '(?x)ed2k://\|file\|(?<file_name>[^|]+)\|(?<file_size>\d+)\|(?<file_hash>[0-9a-fA-F]+)\|(?:p=(?<hash_set>[0-9a-fA-F:]+)\||h=(?<root_hash>[0-9a-zA-Z]+)\||s=(?<http_source>[^|]+)\||/\|sources,(?<sources_host>[0-9a-zA-Z.]+):(?<sources_port>\d+)\|)*/'
-        $fileSize = [int]$regex.Match($Ed2kLink).Groups['file_size'].Value;
+        $fileSize = [System.Int64]$regex.Match($Ed2kLink).Groups['file_size'].Value;
         return $fileSize
     }
 }
@@ -227,11 +227,6 @@ function Move-Ed2kFile{
             $possibleSources += $FileName
         }
 
-<#
-        dir "$mainFileName (*)$extension" | select -ExpandProperty Name | % {
-            $possibleSources += $_
-        }
-#>
         dir "*$extension" | ? {
             $actualMainFileName = $_.BaseName
             if (-not $actualMainFileName.StartsWith($mainFileName)) {
@@ -266,6 +261,7 @@ function Move-Ed2kFile{
     }
 }
 
+cd D:\Downloads
 $ScriptVersion = 1
 $global:missingEd2kUrls = @()
 dir *.manifest.json | % {

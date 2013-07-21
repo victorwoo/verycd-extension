@@ -3,6 +3,11 @@ verycd-extension
 
 整理www.verycd.com电驴下载资源的Chrome插件及PowerShell脚本。
 
+下载地址
+--------
+* [VeryCDExtension.crx](https://github.com/victorwoo/verycd-extension/raw/master/release/1.3/VeryCDExtension.crx "VeryCDExtension.crx")
+* [Move-VeryCDFiles.exe](https://github.com/victorwoo/verycd-extension/raw/master/release/1.3/Move-VeryCDFiles.exe "Move-VeryCDFiles.exe")
+
 欢迎使用
 --------
 通过电骡（eMule）系列工具从[VeryCD](http://www.verycd.com "VeryCD")资源网站下载的文件，往往存放在一个公用的下载文件夹中。如果您是一个资源收藏家，下载了多个资源，每个资源又包含很多文件，那么这些海量的文件很可能会使您的下载文件夹显得杂乱无章。一段时间以后难以辨别这些眼花缭乱的音乐、视频文件，究竟是属于哪张专辑的。
@@ -41,6 +46,10 @@ verycd-extension
 	* 增加版本比对功能。
 	* 调整目录结构，减少路径过长的可能。
 * 2013/07/21 发布1.3。
+	* 增加对不完整下载资源的支持。
+	* 智能分析同名文件。
+	* 创建操作视频。
+	* 以二进制形式发布。
 
 未来功能
 --------

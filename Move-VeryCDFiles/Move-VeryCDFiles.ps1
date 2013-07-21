@@ -187,6 +187,20 @@ function Print-UrlToPDF {
     }
 }
 
+function Get-LengthFromEd2kLink {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+        [string]$Ed2kLink
+    )
+
+    process {
+        $regex = [regex] '(?x)ed2k://\|file\|(?<file_name>[^|]+)\|(?<file_size>\d+)\|(?<file_hash>[0-9a-fA-F]+)\|(?:p=(?<hash_set>[0-9a-fA-F:]+)\||h=(?<root_hash>[0-9a-zA-Z]+)\||s=(?<http_source>[^|]+)\||/\|sources,(?<sources_host>[0-9a-zA-Z.]+):(?<sources_port>\d+)\|)*/'
+        $fileSize = [int]$regex.Match($Ed2kLink).Groups['file_size'].Value;
+        return $fileSize
+    }
+}
+
 function Move-Ed2kFile{
     [CmdletBinding()]
     param(
@@ -202,11 +216,53 @@ function Move-Ed2kFile{
 
     process {
         $newPath = Join-Path $RootFolder $FileName
-        if (-not (Test-Path -LiteralPath $FileName) -and -not (Test-Path -LiteralPath $newPath)) {
-            $missingFiles.Add($FileName) | Out-Null
-            $global:missingEd2kUrls = $global:missingEd2kUrls + $Ed2kUrl
+        if (Test-Path -LiteralPath $newPath) {
+            return
         }
-        mv -LiteralPath $FileName $newPath -Force -ErrorAction SilentlyContinue
+
+        $mainFileName = [System.IO.Path]::GetFileNameWithoutExtension($FileName)
+        $extension = [System.IO.Path]::GetExtension($FileName)
+        $possibleSources = @()
+        if (Test-Path -LiteralPath $FileName) {
+            $possibleSources += $FileName
+        }
+
+<#
+        dir "$mainFileName (*)$extension" | select -ExpandProperty Name | % {
+            $possibleSources += $_
+        }
+#>
+        dir "*$extension" | ? {
+            $actualMainFileName = $_.BaseName
+            if (-not $actualMainFileName.StartsWith($mainFileName)) {
+                return $false
+            }
+
+            $restPart = $actualMainFileName.SubString($mainFileName.Length)
+            return $restPart -cmatch '^ \(\d+\)$'
+        } | % {
+            $possibleSources += $_.Name
+        }
+
+        $possibleSources | % `
+            -begin{
+                $matched = $false
+                $fileSizeFromEd2kUrl = Get-LengthFromEd2kLink $Ed2kUrl
+            } `
+            -process {
+                $fileSize = (dir -LiteralPath $_).Length
+                if ($fileSize -eq 0 -or $fileSize -eq $fileSizeFromEd2kUrl) {
+                    $matched = $true
+                    mv -LiteralPath $_ $newPath -Force -ErrorAction SilentlyContinue
+                }
+            } `
+            -end {
+                if (-not $matched) {
+                    $missingFiles.Add($FileName) | Out-Null
+                    $global:missingEd2kUrls = $global:missingEd2kUrls + $Ed2kUrl
+                }
+            } `
+        
     }
 }
 
@@ -255,11 +311,15 @@ dir *.manifest.json | % {
 	}
 
     if ($missingFiles.Count -eq 0) {
-        mv -LiteralPath $_ (Join-Path $rootFolder "manifest.json")
+        mv -LiteralPath $_ (Join-Path $rootFolder "manifest.json") -Force
     } else {
         Write-Warning ($json.url + " Missing:`n" + ($missingFiles | Out-String))
     }
 }
 
-$global:missingEd2kUrls | sc 'missing.txt'
-notepad missing.txt
+if ($global:missingEd2kUrls.Length -gt 0) {
+    $global:missingEd2kUrls | sc 'missing.txt'
+    notepad missing.txt
+} else {
+    del missing.txt -ErrorAction SilentlyContinue
+}

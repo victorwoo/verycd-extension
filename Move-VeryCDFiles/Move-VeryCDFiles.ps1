@@ -319,3 +319,6 @@ if ($global:missingEd2kUrls.Length -gt 0) {
 } else {
     del missing.txt -ErrorAction SilentlyContinue
 }
+
+Write-Host 'Press any key to continue...'
+[System.Console]::ReadKey() | Out-Null
